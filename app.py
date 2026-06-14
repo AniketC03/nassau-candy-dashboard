@@ -66,6 +66,15 @@ st.markdown("""
         padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
 
+    /* Fix invisible tab labels */
+    .stTabs [data-baseweb="tab"] div p,
+    .stTabs [data-baseweb="tab"] { color: #333333 !important; font-weight: 500 !important; }
+    .stTabs [aria-selected="true"] div p,
+    .stTabs [aria-selected="true"] { color: #1F4E79 !important; font-weight: 700 !important; }
+
+    /* Fix grey chart backgrounds */
+    [data-testid="stPlotlyChart"] > div { background: white !important; border-radius: 10px; }
+
     /* Hide streamlit branding */
     #MainMenu, footer, header { visibility: hidden; }
     .block-container { padding-top: 1.5rem; }
@@ -477,19 +486,23 @@ with tab3:
     # Lead time distribution per ship mode
     st.markdown("<div class='section-header'>Lead Time Distribution per Ship Mode</div>", unsafe_allow_html=True)
     fig_violin = go.Figure()
+    dark_palette = ['#1a5276','#1e8449','#b9770e','#7b241c']
     for i, mode in enumerate(sorted(df['Ship Mode'].unique())):
         sub = df[df['Ship Mode'] == mode]['Lead Time']
         fig_violin.add_trace(go.Violin(
             y=sub, name=mode, box_visible=True, meanline_visible=True,
-            fillcolor=PALETTE[i], line_color=PALETTE[i], opacity=0.7
+            fillcolor=PALETTE[i], line_color=dark_palette[i % len(dark_palette)],
+            opacity=0.85
         ))
     fig_violin.update_layout(
-        title='Lead Time Spread by Ship Mode',
+        title=dict(text='Lead Time Spread by Ship Mode', font=dict(color='#1F4E79', size=15)),
         yaxis_title='Lead Time (Days)',
         plot_bgcolor='white', paper_bgcolor='white',
+        font=dict(color='#333333'),
         height=400, margin=dict(t=50,b=40,l=40,r=20),
-        showlegend=False,
-        yaxis=dict(showgrid=True, gridcolor='#F0F0F0')
+        showlegend=True,
+        yaxis=dict(showgrid=True, gridcolor='#E0E0E0', tickfont=dict(color='#333333')),
+        xaxis=dict(tickfont=dict(color='#333333'))
     )
     st.plotly_chart(fig_violin, use_container_width=True)
 
