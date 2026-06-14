@@ -531,7 +531,7 @@ with tab4:
     ), row=1, col=1)
     fig_reg.add_trace(go.Bar(
         y=region_stats['Region'], x=region_stats['Total_Sales'],
-        orientation='h', marker_color=[c + '99' for c in PALETTE[:4]],
+        orientation='h', marker=dict(color=PALETTE[:4], opacity=0.55),
         text=region_stats['Total_Sales'].apply(lambda x: f'${x:,.0f}'),
         textposition='outside', name='Sales'
     ), row=1, col=2)
