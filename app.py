@@ -120,6 +120,19 @@ COLORS = {
 
 PALETTE = ['#2E75B6','#E07B39','#1E8449','#C0392B','#6C3483','#117A65','#784212']
 
+# Global chart theme — forces all text dark so it's visible on white backgrounds
+CHART_FONT   = dict(family='Arial', color='#1a1a1a', size=12)
+AXIS_STYLE   = dict(color='#1a1a1a', tickfont=dict(color='#222222', size=11),
+                    title_font=dict(color='#1a1a1a', size=12),
+                    showgrid=True, gridcolor='#E8E8E8', linecolor='#CCCCCC')
+LAYOUT_BASE  = dict(
+    plot_bgcolor='white', paper_bgcolor='white',
+    font=dict(family='Arial', color='#1a1a1a', size=12),
+    title_font=dict(family='Arial', color='#1F4E79', size=15),
+    legend=dict(font=dict(color='#1a1a1a')),
+    margin=dict(t=50, b=50, l=50, r=30),
+)
+
 @st.cache_data
 def load_data():
     df = pd.read_csv('data.csv')
@@ -293,13 +306,13 @@ with tab1:
         fig_hist.add_vline(x=df['Lead Time'].median(), line_dash='dot', line_color='#1E8449',
                            annotation_text=f"Median: {df['Lead Time'].median():.0f}d",
                            annotation_position='top left', line_width=2)
-        fig_hist.update_layout(
-            title='Distribution of Shipping Lead Times',
-            xaxis_title='Lead Time (Days)', yaxis_title='Order Count',
-            plot_bgcolor='white', paper_bgcolor='white',
-            height=340, margin=dict(t=50, b=40, l=40, r=20),
-            showlegend=False
-        )
+        fig_hist.update_layout(**{**LAYOUT_BASE,
+            'title': 'Distribution of Shipping Lead Times',
+            'xaxis_title': 'Lead Time (Days)', 'yaxis_title': 'Order Count',
+            'height': 340, 'showlegend': False
+        })
+        fig_hist.update_xaxes(**AXIS_STYLE)
+        fig_hist.update_yaxes(**AXIS_STYLE)
         fig_hist.update_xaxes(showgrid=True, gridcolor='#F0F0F0')
         fig_hist.update_yaxes(showgrid=True, gridcolor='#F0F0F0')
         st.plotly_chart(fig_hist, use_container_width=True)
@@ -312,14 +325,12 @@ with tab1:
                 y=sub, name=str(yr),
                 marker_color=PALETTE[i], boxmean=True
             ))
-        fig_box.update_layout(
-            title='Lead Time by Year',
-            yaxis_title='Lead Time (Days)',
-            plot_bgcolor='white', paper_bgcolor='white',
-            height=340, margin=dict(t=50, b=40, l=40, r=20),
-            showlegend=False
-        )
-        fig_box.update_yaxes(showgrid=True, gridcolor='#F0F0F0')
+        fig_box.update_layout(**{**LAYOUT_BASE,
+            'title': 'Lead Time by Year',
+            'yaxis_title': 'Lead Time (Days)',
+            'height': 340, 'showlegend': False
+        })
+        fig_box.update_yaxes(**AXIS_STYLE)
         st.plotly_chart(fig_box, use_container_width=True)
 
     # Division & Factory row
@@ -334,8 +345,9 @@ with tab1:
                          color_discrete_sequence=PALETTE,
                          title='Orders by Product Division', hole=0.45)
         fig_div.update_traces(textinfo='label+percent', textfont_size=12)
-        fig_div.update_layout(height=320, margin=dict(t=50,b=20,l=20,r=20),
-                               paper_bgcolor='white', showlegend=False)
+        fig_div.update_layout(**{**LAYOUT_BASE,
+            'height': 320, 'margin': dict(t=50,b=20,l=20,r=20), 'showlegend': False
+        })
         st.plotly_chart(fig_div, use_container_width=True)
 
     with c2:
@@ -349,12 +361,12 @@ with tab1:
             text=fac_stats['Orders'].apply(lambda x: f'{x:,}'),
             textposition='outside'
         ))
-        fig_fac.update_layout(
-            title='Order Volume by Factory',
-            xaxis_title='Orders', plot_bgcolor='white', paper_bgcolor='white',
-            height=320, margin=dict(t=50,b=40,l=10,r=60),
-            xaxis=dict(showgrid=True, gridcolor='#F0F0F0')
-        )
+        fig_fac.update_layout(**{**LAYOUT_BASE,
+            'title': 'Order Volume by Factory',
+            'xaxis_title': 'Orders', 'height': 320, 'margin': dict(t=50,b=40,l=10,r=60)
+        })
+        fig_fac.update_xaxes(**AXIS_STYLE)
+        fig_fac.update_yaxes(tickfont=dict(color='#222222'))
         st.plotly_chart(fig_fac, use_container_width=True)
 
 # ══════════════════════════════════════════════════════════════════════
@@ -394,14 +406,14 @@ with tab2:
         hovertemplate='<b>%{y}</b><br>Avg Lead: %{x} days<br>Shipments: %{customdata[0]:,}<br>Efficiency Score: %{customdata[1]:.1f}<extra></extra>',
         customdata=route_stats[['Shipments','Efficiency Score']].values
     ))
-    fig_route.update_layout(
-        title='Routes Ranked by Average Lead Time (green = fastest, red = slowest)',
-        xaxis_title='Average Lead Time (Days)',
-        plot_bgcolor='white', paper_bgcolor='white',
-        height=max(380, len(route_stats) * 34 + 80),
-        margin=dict(t=50, b=40, l=20, r=80),
-        xaxis=dict(showgrid=True, gridcolor='#F0F0F0')
-    )
+    fig_route.update_layout(**{**LAYOUT_BASE,
+        'title': 'Routes Ranked by Average Lead Time (green = fastest, red = slowest)',
+        'xaxis_title': 'Average Lead Time (Days)',
+        'height': max(380, len(route_stats) * 34 + 80),
+        'margin': dict(t=50, b=40, l=20, r=80)
+    })
+    fig_route.update_xaxes(**AXIS_STYLE)
+    fig_route.update_yaxes(tickfont=dict(color='#222222', size=10))
     st.plotly_chart(fig_route, use_container_width=True)
 
     # Scatter — volume vs efficiency
@@ -415,13 +427,12 @@ with tab2:
         labels={'Avg_Lead': 'Avg Lead Time (days)', 'Shipments': 'Number of Shipments'}
     )
     fig_scatter.update_traces(textposition='top center', textfont_size=9)
-    fig_scatter.update_layout(
-        plot_bgcolor='white', paper_bgcolor='white',
-        height=440, margin=dict(t=50, b=40, l=40, r=40),
-        coloraxis_colorbar=dict(title='Efficiency')
-    )
-    fig_scatter.update_xaxes(showgrid=True, gridcolor='#F0F0F0')
-    fig_scatter.update_yaxes(showgrid=True, gridcolor='#F0F0F0')
+    fig_scatter.update_layout(**{**LAYOUT_BASE,
+        'height': 440, 'margin': dict(t=50, b=40, l=40, r=40),
+        'coloraxis_colorbar': dict(title='Efficiency', tickfont=dict(color='#222222'))
+    })
+    fig_scatter.update_xaxes(**AXIS_STYLE)
+    fig_scatter.update_yaxes(**AXIS_STYLE)
     st.plotly_chart(fig_scatter, use_container_width=True)
 
     # Route detail table
@@ -459,13 +470,12 @@ with tab3:
             text=ship_stats['Avg_Lead'].round(0).astype(int).astype(str) + 'd',
             textposition='outside'
         ))
-        fig_sm.update_layout(
-            title='Avg Lead Time by Ship Mode',
-            yaxis_title='Days', plot_bgcolor='white', paper_bgcolor='white',
-            height=360, margin=dict(t=50,b=40,l=40,r=20),
-            yaxis=dict(range=[ship_stats['Avg_Lead'].min()-20, ship_stats['Avg_Lead'].max()+40],
-                       showgrid=True, gridcolor='#F0F0F0')
-        )
+        fig_sm.update_layout(**{**LAYOUT_BASE,
+            'title': 'Avg Lead Time by Ship Mode',
+            'yaxis_title': 'Days', 'height': 360, 'margin': dict(t=50,b=40,l=40,r=20)
+        })
+        fig_sm.update_xaxes(tickfont=dict(color='#222222'))
+        fig_sm.update_yaxes(range=[ship_stats['Avg_Lead'].min()-20, ship_stats['Avg_Lead'].max()+40], **AXIS_STYLE)
         st.plotly_chart(fig_sm, use_container_width=True)
 
     with c2:
@@ -475,12 +485,12 @@ with tab3:
             text=ship_stats['Orders'].apply(lambda x: f'{x:,}'),
             textposition='outside'
         ))
-        fig_vol.update_layout(
-            title='Order Volume by Ship Mode',
-            yaxis_title='Orders', plot_bgcolor='white', paper_bgcolor='white',
-            height=360, margin=dict(t=50,b=40,l=40,r=20),
-            yaxis=dict(showgrid=True, gridcolor='#F0F0F0')
-        )
+        fig_vol.update_layout(**{**LAYOUT_BASE,
+            'title': 'Order Volume by Ship Mode',
+            'yaxis_title': 'Orders', 'height': 360, 'margin': dict(t=50,b=40,l=40,r=20)
+        })
+        fig_vol.update_xaxes(tickfont=dict(color='#222222'))
+        fig_vol.update_yaxes(**AXIS_STYLE)
         st.plotly_chart(fig_vol, use_container_width=True)
 
     # Lead time distribution per ship mode
@@ -494,16 +504,13 @@ with tab3:
             fillcolor=PALETTE[i], line_color=dark_palette[i % len(dark_palette)],
             opacity=0.85
         ))
-    fig_violin.update_layout(
-        title=dict(text='Lead Time Spread by Ship Mode', font=dict(color='#1F4E79', size=15)),
-        yaxis_title='Lead Time (Days)',
-        plot_bgcolor='white', paper_bgcolor='white',
-        font=dict(color='#333333'),
-        height=400, margin=dict(t=50,b=40,l=40,r=20),
-        showlegend=True,
-        yaxis=dict(showgrid=True, gridcolor='#E0E0E0', tickfont=dict(color='#333333')),
-        xaxis=dict(tickfont=dict(color='#333333'))
-    )
+    fig_violin.update_layout(**{**LAYOUT_BASE,
+        'title': 'Lead Time Spread by Ship Mode',
+        'yaxis_title': 'Lead Time (Days)',
+        'height': 400, 'margin': dict(t=50,b=40,l=40,r=20), 'showlegend': True
+    })
+    fig_violin.update_xaxes(tickfont=dict(color='#222222', size=11))
+    fig_violin.update_yaxes(**AXIS_STYLE)
     st.plotly_chart(fig_violin, use_container_width=True)
 
     # Cost-time table
@@ -548,11 +555,11 @@ with tab4:
         text=region_stats['Total_Sales'].apply(lambda x: f'${x:,.0f}'),
         textposition='outside', name='Sales'
     ), row=1, col=2)
-    fig_reg.update_layout(
-        height=320, plot_bgcolor='white', paper_bgcolor='white',
-        margin=dict(t=50,b=40,l=80,r=80), showlegend=False
-    )
-    fig_reg.update_xaxes(showgrid=True, gridcolor='#F0F0F0')
+    fig_reg.update_layout(**{**LAYOUT_BASE,
+        'height': 320, 'margin': dict(t=50,b=40,l=80,r=80), 'showlegend': False
+    })
+    fig_reg.update_xaxes(**AXIS_STYLE)
+    fig_reg.update_yaxes(tickfont=dict(color='#222222'))
     st.plotly_chart(fig_reg, use_container_width=True)
 
     # Factory map
@@ -580,7 +587,8 @@ with tab4:
         fig_map.update_layout(
             height=480, margin=dict(t=50,b=0,l=0,r=0),
             paper_bgcolor='white',
-            coloraxis_colorbar=dict(title='Avg Lead (days)')
+            font=dict(color='#1a1a1a'),
+            coloraxis_colorbar=dict(title='Avg Lead (days)', tickfont=dict(color='#222222'))
         )
         st.plotly_chart(fig_map, use_container_width=True)
 
@@ -632,16 +640,18 @@ with tab5:
         annotation_position='top left',
         annotation_font_color='#C0392B'
     )
-    fig_trend.update_xaxes(tickangle=45)
+    fig_trend.update_xaxes(tickangle=45, tickfont=dict(color='#222222'), linecolor='#CCCCCC')
     fig_trend.update_yaxes(title_text='Avg Lead Time (days)', secondary_y=False,
-                            showgrid=True, gridcolor='#F0F0F0')
-    fig_trend.update_yaxes(title_text='Order Volume', secondary_y=True, showgrid=False)
-    fig_trend.update_layout(
-        title='Monthly Shipping Lead Time & Order Volume',
-        plot_bgcolor='white', paper_bgcolor='white',
-        height=420, margin=dict(t=50,b=60,l=60,r=60),
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
-    )
+                            showgrid=True, gridcolor='#E8E8E8',
+                            tickfont=dict(color='#222222'), title_font=dict(color='#2E75B6'))
+    fig_trend.update_yaxes(title_text='Order Volume', secondary_y=True, showgrid=False,
+                            tickfont=dict(color='#222222'), title_font=dict(color='#E07B39'))
+    fig_trend.update_layout(**{**LAYOUT_BASE,
+        'title': 'Monthly Shipping Lead Time & Order Volume',
+        'height': 420, 'margin': dict(t=50,b=60,l=60,r=60),
+        'legend': dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1,
+                       font=dict(color='#1a1a1a'))
+    })
     st.plotly_chart(fig_trend, use_container_width=True)
 
     # Quarterly breakdown
@@ -654,12 +664,11 @@ with tab5:
         title='Quarterly Avg Lead Time by Region',
         labels={'Lead Time': 'Avg Lead Time (days)'}
     )
-    fig_qtr.update_layout(
-        plot_bgcolor='white', paper_bgcolor='white',
-        height=380, margin=dict(t=50,b=60,l=60,r=20),
-        xaxis=dict(tickangle=45),
-        yaxis=dict(showgrid=True, gridcolor='#F0F0F0')
-    )
+    fig_qtr.update_layout(**{**LAYOUT_BASE,
+        'height': 380, 'margin': dict(t=50,b=60,l=60,r=20)
+    })
+    fig_qtr.update_xaxes(tickangle=45, tickfont=dict(color='#222222'))
+    fig_qtr.update_yaxes(**AXIS_STYLE)
     st.plotly_chart(fig_qtr, use_container_width=True)
 
     # YoY comparison
@@ -672,11 +681,11 @@ with tab5:
         title='Avg Lead Time by Ship Mode: 2024 vs 2025',
         labels={'Lead Time': 'Avg Lead Time (days)'}
     )
-    fig_yoy.update_layout(
-        plot_bgcolor='white', paper_bgcolor='white',
-        height=360, margin=dict(t=50,b=40,l=60,r=20),
-        yaxis=dict(showgrid=True, gridcolor='#F0F0F0')
-    )
+    fig_yoy.update_layout(**{**LAYOUT_BASE,
+        'height': 360, 'margin': dict(t=50,b=40,l=60,r=20)
+    })
+    fig_yoy.update_xaxes(tickfont=dict(color='#222222'))
+    fig_yoy.update_yaxes(**AXIS_STYLE)
     st.plotly_chart(fig_yoy, use_container_width=True)
 
     # Product-level drill
@@ -693,10 +702,11 @@ with tab5:
         texttemplate='%{text}',
         colorbar=dict(title='Days')
     ))
-    fig_heat.update_layout(
-        title='Avg Lead Time by Product × Region (days)',
-        plot_bgcolor='white', paper_bgcolor='white',
-        height=480, margin=dict(t=50,b=60,l=20,r=20),
-        xaxis_title='Region', yaxis_title='Product'
-    )
+    fig_heat.update_layout(**{**LAYOUT_BASE,
+        'title': 'Avg Lead Time by Product × Region (days)',
+        'height': 480, 'margin': dict(t=50,b=60,l=20,r=20),
+        'xaxis_title': 'Region', 'yaxis_title': 'Product'
+    })
+    fig_heat.update_xaxes(tickfont=dict(color='#222222'))
+    fig_heat.update_yaxes(tickfont=dict(color='#222222'))
     st.plotly_chart(fig_heat, use_container_width=True)
