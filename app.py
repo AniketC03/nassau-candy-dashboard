@@ -1,712 +1,385 @@
-import streamlit as st
+"""
+Nassau Candy Distributor — Factory-to-Customer Shipping Route Efficiency Dashboard
+Run with:  streamlit run app.py
+Requires:  Nassau_Candy_Distributor.csv in the same folder.
+"""
+
 import pandas as pd
+import numpy as np
+import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import numpy as np
 
-# ─── Page config ───────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Page config & light styling
+# ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Nassau Candy | Shipping Analytics",
-    page_icon="🍬",
+    page_title="Nassau Candy | Shipping Route Efficiency",
+    page_icon="🚚",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
-# ─── Custom CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    /* Main background */
-    .stApp { background-color: #F7F8FA; }
-
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1F4E79 0%, #2E75B6 100%);
-    }
-    [data-testid="stSidebar"] * { color: #E8F4FD !important; }
-    [data-testid="stSidebar"] .stSelectbox label,
-    [data-testid="stSidebar"] .stMultiSelect label,
-    [data-testid="stSidebar"] .stSlider label { color: #BDD7EE !important; font-weight: 600; }
-    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2,
-    [data-testid="stSidebar"] h3 { color: #FFFFFF !important; }
-
-    /* KPI cards */
-    .kpi-card {
-        background: white;
-        border-radius: 12px;
-        padding: 20px 24px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        border-left: 4px solid #2E75B6;
-        margin-bottom: 8px;
-    }
-    .kpi-card.green  { border-left-color: #1E8449; }
-    .kpi-card.orange { border-left-color: #E07B39; }
-    .kpi-card.red    { border-left-color: #C0392B; }
-    .kpi-label { font-size: 12px; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
-    .kpi-value { font-size: 28px; font-weight: 700; color: #1F4E79; margin: 4px 0 2px; }
-    .kpi-delta { font-size: 12px; color: #555; }
-
-    /* Section headers */
-    .section-header {
-        font-size: 18px; font-weight: 700; color: #1F4E79;
-        border-bottom: 2px solid #2E75B6;
-        padding-bottom: 6px; margin: 24px 0 16px;
-    }
-
-    /* Alert box */
-    .alert-box {
-        background: #FFF8E1; border-left: 4px solid #F9A825;
-        border-radius: 8px; padding: 14px 18px; margin: 12px 0;
-        font-size: 13px; color: #5D4037;
-    }
-
-    /* Chart cards */
-    .chart-card {
-        background: white; border-radius: 12px;
-        padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    }
-
-    /* Fix invisible tab labels */
-    .stTabs [data-baseweb="tab"] div p,
-    .stTabs [data-baseweb="tab"] { color: #333333 !important; font-weight: 500 !important; }
-    .stTabs [aria-selected="true"] div p,
-    .stTabs [aria-selected="true"] { color: #1F4E79 !important; font-weight: 700 !important; }
-
-    /* Fix grey chart backgrounds */
-    [data-testid="stPlotlyChart"] > div { background: white !important; border-radius: 10px; }
-
-    /* Hide streamlit branding */
-    #MainMenu, footer, header { visibility: hidden; }
-    .block-container { padding-top: 1.5rem; }
+.metric-note {color:#888; font-size:0.8rem;}
+div[data-testid="stMetricValue"] {font-size: 1.6rem;}
 </style>
 """, unsafe_allow_html=True)
 
-# ─── Data loading & feature engineering ────────────────────────────────────────
-FACTORY_MAP = {
-    'Wonka Bar - Nutty Crunch Surprise': "Lot's O' Nuts",
-    'Wonka Bar - Fudge Mallows':         "Lot's O' Nuts",
-    'Wonka Bar -Scrumdiddlyumptious':    "Lot's O' Nuts",
-    'Wonka Bar - Milk Chocolate':        "Wicked Choccy's",
-    'Wonka Bar - Triple Dazzle Caramel': "Wicked Choccy's",
-    'Laffy Taffy':          'Sugar Shack',
-    'SweeTARTS':            'Sugar Shack',
-    'Nerds':                'Sugar Shack',
-    'Fun Dip':              'Sugar Shack',
-    'Fizzy Lifting Drinks': 'Sugar Shack',
-    'Everlasting Gobstopper': 'Secret Factory',
-    'Lickable Wallpaper':   'Secret Factory',
-    'Wonka Gum':            'Secret Factory',
-    'Hair Toffee':          'The Other Factory',
-    'Kazookles':            'The Other Factory',
+US_STATE_ABBR = {
+    'Alabama':'AL','Alaska':'AK','Arizona':'AZ','Arkansas':'AR','California':'CA','Colorado':'CO',
+    'Connecticut':'CT','Delaware':'DE','District of Columbia':'DC','Florida':'FL','Georgia':'GA',
+    'Hawaii':'HI','Idaho':'ID','Illinois':'IL','Indiana':'IN','Iowa':'IA','Kansas':'KS','Kentucky':'KY',
+    'Louisiana':'LA','Maine':'ME','Maryland':'MD','Massachusetts':'MA','Michigan':'MI','Minnesota':'MN',
+    'Mississippi':'MS','Missouri':'MO','Montana':'MT','Nebraska':'NE','Nevada':'NV','New Hampshire':'NH',
+    'New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND',
+    'Ohio':'OH','Oklahoma':'OK','Oregon':'OR','Pennsylvania':'PA','Rhode Island':'RI',
+    'South Carolina':'SC','South Dakota':'SD','Tennessee':'TN','Texas':'TX','Utah':'UT','Vermont':'VT',
+    'Virginia':'VA','Washington':'WA','West Virginia':'WV','Wisconsin':'WI','Wyoming':'WY'
 }
 
 FACTORY_COORDS = {
-    "Lot's O' Nuts":    (32.881893, -111.768036),
-    "Wicked Choccy's":  (32.076176, -81.088371),
-    "Sugar Shack":      (48.119140, -96.181150),
-    "Secret Factory":   (41.446333, -90.565487),
-    "The Other Factory":(35.117500, -89.971107),
+    "Lot's O' Nuts":     (32.881893, -111.768036),
+    "Wicked Choccy's":   (32.076176,  -81.088371),
+    "Sugar Shack":       (48.119140,  -96.181150),
+    "Secret Factory":    (41.446333,  -90.565487),
+    "The Other Factory": (35.117500,  -89.971107),
 }
 
-COLORS = {
-    'primary': '#1F4E79',
-    'blue':    '#2E75B6',
-    'green':   '#1E8449',
-    'orange':  '#E07B39',
-    'red':     '#C0392B',
-    'purple':  '#6C3483',
-    'teal':    '#117A65',
+PRODUCT_FACTORY = {
+    "Wonka Bar - Nutty Crunch Surprise": "Lot's O' Nuts",
+    "Wonka Bar - Fudge Mallows":         "Lot's O' Nuts",
+    "Wonka Bar -Scrumdiddlyumptious":    "Lot's O' Nuts",
+    "Wonka Bar - Milk Chocolate":        "Wicked Choccy's",
+    "Wonka Bar - Triple Dazzle Caramel": "Wicked Choccy's",
+    "Laffy Taffy":              "Sugar Shack",
+    "SweeTARTS":                "Sugar Shack",
+    "Nerds":                    "Sugar Shack",
+    "Fun Dip":                  "Sugar Shack",
+    "Fizzy Lifting Drinks":     "Sugar Shack",
+    "Everlasting Gobstopper":   "Secret Factory",
+    "Hair Toffee":              "The Other Factory",
+    "Lickable Wallpaper":       "Secret Factory",
+    "Wonka Gum":                "Secret Factory",
+    "Kazookles":                "The Other Factory",
 }
 
-PALETTE = ['#2E75B6','#E07B39','#1E8449','#C0392B','#6C3483','#117A65','#784212']
+DATA_PATH = "Nassau_Candy_Distributor.csv"
 
-# Global chart theme — forces all text dark so it's visible on white backgrounds
-CHART_FONT   = dict(family='Arial', color='#1a1a1a', size=12)
-AXIS_STYLE   = dict(color='#1a1a1a', tickfont=dict(color='#222222', size=11),
-                    title_font=dict(color='#1a1a1a', size=12),
-                    showgrid=True, gridcolor='#E8E8E8', linecolor='#CCCCCC')
-LAYOUT_BASE  = dict(
-    plot_bgcolor='white', paper_bgcolor='white',
-    font=dict(family='Arial', color='#1a1a1a', size=12),
-    title_font=dict(family='Arial', color='#1F4E79', size=15),
-    legend=dict(font=dict(color='#1a1a1a')),
-    margin=dict(t=50, b=50, l=50, r=30),
-)
 
+# ---------------------------------------------------------------------------
+# Data loading & feature engineering (cached)
+# ---------------------------------------------------------------------------
 @st.cache_data
-def load_data():
-    df = pd.read_csv('data.csv')
-    df['Order Date'] = pd.to_datetime(df['Order Date'], dayfirst=True)
-    df['Ship Date']  = pd.to_datetime(df['Ship Date'],  dayfirst=True)
-    df['Lead Time']  = (df['Ship Date'] - df['Order Date']).dt.days
-    df['Factory']    = df['Product Name'].map(FACTORY_MAP)
-    df['Route']      = df['Factory'] + ' → ' + df['Region']
-    df['Year']       = df['Order Date'].dt.year
-    df['Month']      = df['Order Date'].dt.to_period('M').astype(str)
-    df['Quarter']    = df['Order Date'].dt.to_period('Q').astype(str)
-    df['Delay Flag'] = df['Lead Time'] > 7
+def load_data(path: str) -> pd.DataFrame:
+    df = pd.read_csv(path)
+
+    text_cols = ['Ship Mode', 'Country/Region', 'City', 'State/Province', 'Division', 'Region', 'Product Name']
+    for c in text_cols:
+        df[c] = df[c].astype(str).str.strip()
+
+    df['Order Date'] = pd.to_datetime(df['Order Date'], format='%d-%m-%Y', errors='coerce')
+    df['Ship Date'] = pd.to_datetime(df['Ship Date'], format='%d-%m-%Y', errors='coerce')
+    df = df.dropna(subset=['Order Date', 'Ship Date'])
+
+    df['Lead Time'] = (df['Ship Date'] - df['Order Date']).dt.days
+    df = df[df['Lead Time'] >= 0]  # remove invalid negative lead times, per cleaning spec
+
+    df['Factory'] = df['Product Name'].map(PRODUCT_FACTORY)
+    df = df.dropna(subset=['Factory'])
+    df['Factory Lat'] = df['Factory'].map(lambda f: FACTORY_COORDS[f][0])
+    df['Factory Lon'] = df['Factory'].map(lambda f: FACTORY_COORDS[f][1])
+
+    df['Route (Region)'] = df['Factory'] + ' -> ' + df['Region']
+    df['Route (State)'] = df['Factory'] + ' -> ' + df['State/Province']
+    df['State Abbr'] = df['State/Province'].map(US_STATE_ABBR)
+
     return df
 
-df_raw = load_data()
 
-# ─── Sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("## 🍬 Nassau Candy")
-    st.markdown("### Shipping Analytics")
-    st.markdown("---")
-
-    st.markdown("#### 📅 Date Range")
-    min_date = df_raw['Order Date'].min().date()
-    max_date = df_raw['Order Date'].max().date()
-    date_range = st.date_input(
-        "Order date window",
-        value=(min_date, max_date),
-        min_value=min_date, max_value=max_date, label_visibility="collapsed"
-    )
-
-    st.markdown("#### 🗺️ Region")
-    regions = st.multiselect(
-        "Select regions", options=sorted(df_raw['Region'].unique()),
-        default=sorted(df_raw['Region'].unique()), label_visibility="collapsed"
-    )
-
-    st.markdown("#### 🚚 Ship Mode")
-    ship_modes = st.multiselect(
-        "Select ship modes", options=sorted(df_raw['Ship Mode'].unique()),
-        default=sorted(df_raw['Ship Mode'].unique()), label_visibility="collapsed"
-    )
-
-    st.markdown("#### 🏭 Factory")
-    factories = st.multiselect(
-        "Select factories", options=sorted(df_raw['Factory'].unique()),
-        default=sorted(df_raw['Factory'].unique()), label_visibility="collapsed"
-    )
-
-    st.markdown("#### 📦 Division")
-    divisions = st.multiselect(
-        "Select divisions", options=sorted(df_raw['Division'].unique()),
-        default=sorted(df_raw['Division'].unique()), label_visibility="collapsed"
-    )
-
-    st.markdown("#### ⏱️ Lead Time Threshold (days)")
-    lt_threshold = st.slider(
-        "Flag shipments exceeding:", min_value=1, max_value=2000,
-        value=7, label_visibility="collapsed"
-    )
-
-    st.markdown("---")
-    st.caption("Data: Jan 2024 – Dec 2025 · 10,194 orders")
-
-# ─── Apply filters ─────────────────────────────────────────────────────────────
-if len(date_range) == 2:
-    start, end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
-else:
-    start, end = df_raw['Order Date'].min(), df_raw['Order Date'].max()
-
-df = df_raw[
-    (df_raw['Order Date'] >= start) &
-    (df_raw['Order Date'] <= end) &
-    (df_raw['Region'].isin(regions)) &
-    (df_raw['Ship Mode'].isin(ship_modes)) &
-    (df_raw['Factory'].isin(factories)) &
-    (df_raw['Division'].isin(divisions))
-].copy()
-
-df['Delay Flag'] = df['Lead Time'] > lt_threshold
-
-# ─── Page title ────────────────────────────────────────────────────────────────
-st.markdown("""
-<div style='display:flex;align-items:center;gap:12px;margin-bottom:8px;'>
-    <div>
-        <div style='font-size:26px;font-weight:800;color:#1F4E79;line-height:1.1;'>Nassau Candy Distributor</div>
-        <div style='font-size:14px;color:#666;'>Factory-to-Customer Shipping Route Efficiency Dashboard</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-if len(df) == 0:
-    st.error("No data matches the selected filters. Please adjust your selections.")
+try:
+    raw_df = load_data(DATA_PATH)
+except FileNotFoundError:
+    st.error(f"Could not find `{DATA_PATH}`. Place the CSV file in the same folder as app.py.")
     st.stop()
 
-# ─── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊 Overview",
-    "🗺️ Route Efficiency",
-    "🚚 Ship Mode",
-    "📍 Geographic",
-    "📈 Trends"
+# ---------------------------------------------------------------------------
+# Sidebar filters
+# ---------------------------------------------------------------------------
+st.sidebar.title("🚚 Filters")
+
+min_date, max_date = raw_df['Order Date'].min().date(), raw_df['Order Date'].max().date()
+date_range = st.sidebar.date_input(
+    "Order date range", value=(min_date, max_date), min_value=min_date, max_value=max_date
+)
+if isinstance(date_range, tuple) and len(date_range) == 2:
+    start_date, end_date = date_range
+else:
+    start_date, end_date = min_date, max_date
+
+regions = sorted(raw_df['Region'].unique())
+selected_regions = st.sidebar.multiselect("Region", regions, default=regions)
+
+available_states = sorted(raw_df[raw_df['Region'].isin(selected_regions)]['State/Province'].unique())
+selected_states = st.sidebar.multiselect("State / Province", available_states, default=available_states)
+
+ship_modes = sorted(raw_df['Ship Mode'].unique())
+selected_modes = st.sidebar.multiselect("Ship Mode", ship_modes, default=ship_modes)
+
+lt_min, lt_max = int(raw_df['Lead Time'].min()), int(raw_df['Lead Time'].max())
+default_threshold = int(raw_df['Lead Time'].quantile(0.75))
+delay_threshold = st.sidebar.slider(
+    "Delay threshold (days) — shipments above this are flagged 'Delayed'",
+    min_value=lt_min, max_value=lt_max, value=default_threshold
+)
+
+st.sidebar.markdown("---")
+st.sidebar.caption(
+    "⚠️ Data quality note: Order Date and Ship Date in the source data are not "
+    "co-dated, producing inflated absolute lead-time values. Use this dashboard "
+    "for **relative** route/mode comparisons, not literal day counts. See the "
+    "EDA notebook, Section 3, for details."
+)
+
+# ---------------------------------------------------------------------------
+# Apply filters
+# ---------------------------------------------------------------------------
+mask = (
+    (raw_df['Order Date'].dt.date >= start_date)
+    & (raw_df['Order Date'].dt.date <= end_date)
+    & (raw_df['Region'].isin(selected_regions))
+    & (raw_df['State/Province'].isin(selected_states))
+    & (raw_df['Ship Mode'].isin(selected_modes))
+)
+df = raw_df[mask].copy()
+df['Delayed'] = df['Lead Time'] > delay_threshold
+
+st.title("Factory → Customer Shipping Route Efficiency")
+st.caption("Nassau Candy Distributor — Logistics Analytics Dashboard")
+
+if df.empty:
+    st.warning("No shipments match the current filters. Adjust filters in the sidebar.")
+    st.stop()
+
+# ---------------------------------------------------------------------------
+# Top KPI row
+# ---------------------------------------------------------------------------
+k1, k2, k3, k4, k5 = st.columns(5)
+k1.metric("Shipments", f"{len(df):,}")
+k2.metric("Avg Lead Time", f"{df['Lead Time'].mean():.0f} d")
+k3.metric("Delay Rate", f"{df['Delayed'].mean()*100:.1f}%")
+k4.metric("Total Sales", f"${df['Sales'].sum():,.0f}")
+k5.metric("Routes Active", f"{df['Route (State)'].nunique():,}")
+
+st.markdown("---")
+
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 Route Efficiency Overview",
+    "🗺️ Geographic Shipping Map",
+    "🚢 Ship Mode Comparison",
+    "🔎 Route Drill-Down",
 ])
 
-# ══════════════════════════════════════════════════════════════════════
-# TAB 1 — OVERVIEW
-# ══════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+# TAB 1 — Route Efficiency Overview
+# ---------------------------------------------------------------------------
 with tab1:
-    # Data anomaly alert
-    st.markdown("""
-    <div class='alert-box'>
-        ⚠️ <strong>Data Quality Notice:</strong> Lead times range from 904 to 1,642 days — values that are physically impossible
-        for a candy distributor. Ship dates appear to reflect projected future dates rather than actual deliveries.
-        All comparisons should be read as <em>relative rankings</em>, not absolute benchmarks, until source data is corrected.
-    </div>
-    """, unsafe_allow_html=True)
+    st.subheader("Average Lead Time by Route")
 
-    # KPI row
-    total_orders   = len(df)
-    avg_lt         = df['Lead Time'].mean()
-    delay_rate     = df['Delay Flag'].mean() * 100
-    total_sales    = df['Sales'].sum()
-    total_profit   = df['Gross Profit'].sum()
-    margin         = (total_profit / total_sales * 100) if total_sales > 0 else 0
+    granularity = st.radio("Route granularity", ["Factory → Region", "Factory → State"], horizontal=True)
+    route_col = 'Route (Region)' if granularity == "Factory → Region" else 'Route (State)'
+    min_shipments = st.slider("Minimum shipments per route to include", 1, 50, 10, key="t1_minship")
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    with c1:
-        st.markdown(f"""<div class='kpi-card'>
-            <div class='kpi-label'>Total Orders</div>
-            <div class='kpi-value'>{total_orders:,}</div>
-            <div class='kpi-delta'>After filters</div></div>""", unsafe_allow_html=True)
-    with c2:
-        st.markdown(f"""<div class='kpi-card orange'>
-            <div class='kpi-label'>Avg Lead Time</div>
-            <div class='kpi-value'>{avg_lt:,.0f}d</div>
-            <div class='kpi-delta'>≈ {avg_lt/365:.1f} years</div></div>""", unsafe_allow_html=True)
-    with c3:
-        color = 'red' if delay_rate > 50 else 'orange'
-        st.markdown(f"""<div class='kpi-card {color}'>
-            <div class='kpi-label'>Delay Rate</div>
-            <div class='kpi-value'>{delay_rate:.1f}%</div>
-            <div class='kpi-delta'>>{lt_threshold}d threshold</div></div>""", unsafe_allow_html=True)
-    with c4:
-        st.markdown(f"""<div class='kpi-card green'>
-            <div class='kpi-label'>Total Sales</div>
-            <div class='kpi-value'>${total_sales:,.0f}</div>
-            <div class='kpi-delta'>All regions</div></div>""", unsafe_allow_html=True)
-    with c5:
-        st.markdown(f"""<div class='kpi-card green'>
-            <div class='kpi-label'>Gross Profit</div>
-            <div class='kpi-value'>${total_profit:,.0f}</div>
-            <div class='kpi-delta'>Net of cost</div></div>""", unsafe_allow_html=True)
-    with c6:
-        st.markdown(f"""<div class='kpi-card green'>
-            <div class='kpi-label'>Profit Margin</div>
-            <div class='kpi-value'>{margin:.1f}%</div>
-            <div class='kpi-delta'>Gross margin</div></div>""", unsafe_allow_html=True)
-
-    st.markdown("<div class='section-header'>Lead Time Distribution</div>", unsafe_allow_html=True)
-    col_l, col_r = st.columns([3, 2])
-
-    with col_l:
-        fig_hist = go.Figure()
-        fig_hist.add_trace(go.Histogram(
-            x=df['Lead Time'], nbinsx=40,
-            marker_color='#2E75B6', opacity=0.8, name='Orders'
-        ))
-        fig_hist.add_vline(x=df['Lead Time'].mean(), line_dash='dash', line_color='#E07B39',
-                           annotation_text=f"Mean: {df['Lead Time'].mean():.0f}d",
-                           annotation_position='top right', line_width=2)
-        fig_hist.add_vline(x=df['Lead Time'].median(), line_dash='dot', line_color='#1E8449',
-                           annotation_text=f"Median: {df['Lead Time'].median():.0f}d",
-                           annotation_position='top left', line_width=2)
-        fig_hist.update_layout(**{**LAYOUT_BASE,
-            'title': 'Distribution of Shipping Lead Times',
-            'xaxis_title': 'Lead Time (Days)', 'yaxis_title': 'Order Count',
-            'height': 340, 'showlegend': False
-        })
-        fig_hist.update_xaxes(**AXIS_STYLE)
-        fig_hist.update_yaxes(**AXIS_STYLE)
-        fig_hist.update_xaxes(showgrid=True, gridcolor='#F0F0F0')
-        fig_hist.update_yaxes(showgrid=True, gridcolor='#F0F0F0')
-        st.plotly_chart(fig_hist, use_container_width=True)
-
-    with col_r:
-        fig_box = go.Figure()
-        for i, yr in enumerate(sorted(df['Year'].unique())):
-            sub = df[df['Year'] == yr]['Lead Time']
-            fig_box.add_trace(go.Box(
-                y=sub, name=str(yr),
-                marker_color=PALETTE[i], boxmean=True
-            ))
-        fig_box.update_layout(**{**LAYOUT_BASE,
-            'title': 'Lead Time by Year',
-            'yaxis_title': 'Lead Time (Days)',
-            'height': 340, 'showlegend': False
-        })
-        fig_box.update_yaxes(**AXIS_STYLE)
-        st.plotly_chart(fig_box, use_container_width=True)
-
-    # Division & Factory row
-    st.markdown("<div class='section-header'>Volume & Sales Breakdown</div>", unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-
-    with c1:
-        div_stats = df.groupby('Division').agg(
-            Orders=('Row ID','count'), Sales=('Sales','sum')
-        ).reset_index()
-        fig_div = px.pie(div_stats, names='Division', values='Orders',
-                         color_discrete_sequence=PALETTE,
-                         title='Orders by Product Division', hole=0.45)
-        fig_div.update_traces(textinfo='label+percent', textfont_size=12)
-        fig_div.update_layout(**{**LAYOUT_BASE,
-            'height': 320, 'margin': dict(t=50,b=20,l=20,r=20), 'showlegend': False
-        })
-        st.plotly_chart(fig_div, use_container_width=True)
-
-    with c2:
-        fac_stats = df.groupby('Factory').agg(
-            Orders=('Row ID','count'), Sales=('Sales','sum'),
-            AvgLead=('Lead Time','mean')
-        ).reset_index().sort_values('Orders', ascending=True)
-        fig_fac = go.Figure(go.Bar(
-            x=fac_stats['Orders'], y=fac_stats['Factory'],
-            orientation='h', marker_color=PALETTE[:len(fac_stats)],
-            text=fac_stats['Orders'].apply(lambda x: f'{x:,}'),
-            textposition='outside'
-        ))
-        fig_fac.update_layout(**{**LAYOUT_BASE,
-            'title': 'Order Volume by Factory',
-            'xaxis_title': 'Orders', 'height': 320, 'margin': dict(t=50,b=40,l=10,r=60)
-        })
-        fig_fac.update_xaxes(**AXIS_STYLE)
-        fig_fac.update_yaxes(tickfont=dict(color='#222222'))
-        st.plotly_chart(fig_fac, use_container_width=True)
-
-# ══════════════════════════════════════════════════════════════════════
-# TAB 2 — ROUTE EFFICIENCY
-# ══════════════════════════════════════════════════════════════════════
-with tab2:
-    st.markdown("<div class='section-header'>Route Performance Leaderboard</div>", unsafe_allow_html=True)
-
-    min_vol = st.slider("Minimum shipments per route", 1, 500, 10, key='min_vol')
-
-    route_stats = df.groupby('Route').agg(
-        Avg_Lead=('Lead Time', 'mean'),
-        Shipments=('Row ID', 'count'),
-        Delay_Rate=('Delay Flag', 'mean'),
+    route_agg = df.groupby(route_col).agg(
+        Total_Shipments=('Order ID', 'count'),
+        Avg_Lead_Time=('Lead Time', 'mean'),
+        Std_Lead_Time=('Lead Time', 'std'),
+        Delay_Rate=('Delayed', 'mean'),
         Total_Sales=('Sales', 'sum'),
-        Avg_Profit=('Gross Profit', 'mean')
     ).reset_index()
-    route_stats = route_stats[route_stats['Shipments'] >= min_vol].sort_values('Avg_Lead')
-    route_stats['Efficiency Score'] = (
-        100 - ((route_stats['Avg_Lead'] - route_stats['Avg_Lead'].min()) /
-               (route_stats['Avg_Lead'].max() - route_stats['Avg_Lead'].min() + 1e-9)) * 100
-    ).round(1)
-    route_stats['Delay_Rate'] = (route_stats['Delay_Rate'] * 100).round(1)
-    route_stats['Avg_Lead'] = route_stats['Avg_Lead'].round(0).astype(int)
-    route_stats['Avg_Profit'] = route_stats['Avg_Profit'].round(2)
+    route_agg = route_agg[route_agg['Total_Shipments'] >= min_shipments].sort_values('Avg_Lead_Time')
 
-    # Color bars
-    colors_route = ['#1E8449' if i < 3 else ('#C0392B' if i >= len(route_stats)-3 else '#2E75B6')
-                    for i in range(len(route_stats))]
+    if route_agg.empty:
+        st.info("No routes meet the minimum shipment threshold — lower it in the slider above.")
+    else:
+        lo, hi = route_agg['Avg_Lead_Time'].min(), route_agg['Avg_Lead_Time'].max()
+        route_agg['Efficiency Score'] = 100 if hi == lo else (100 * (hi - route_agg['Avg_Lead_Time']) / (hi - lo)).round(1)
 
-    fig_route = go.Figure(go.Bar(
-        x=route_stats['Avg_Lead'], y=route_stats['Route'],
-        orientation='h',
-        marker_color=colors_route,
-        text=route_stats['Avg_Lead'].astype(str) + 'd',
-        textposition='outside',
-        hovertemplate='<b>%{y}</b><br>Avg Lead: %{x} days<br>Shipments: %{customdata[0]:,}<br>Efficiency Score: %{customdata[1]:.1f}<extra></extra>',
-        customdata=route_stats[['Shipments','Efficiency Score']].values
-    ))
-    fig_route.update_layout(**{**LAYOUT_BASE,
-        'title': 'Routes Ranked by Average Lead Time (green = fastest, red = slowest)',
-        'xaxis_title': 'Average Lead Time (Days)',
-        'height': max(380, len(route_stats) * 34 + 80),
-        'margin': dict(t=50, b=40, l=20, r=80)
-    })
-    fig_route.update_xaxes(**AXIS_STYLE)
-    fig_route.update_yaxes(tickfont=dict(color='#222222', size=10))
-    st.plotly_chart(fig_route, use_container_width=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            top10 = route_agg.head(10)
+            fig = px.bar(top10, x='Avg_Lead_Time', y=route_col, orientation='h',
+                         title="Top 10 Most Efficient Routes", color_discrete_sequence=['#27AE60'])
+            fig.update_layout(yaxis={'categoryorder': 'total descending'}, xaxis_title="Avg Lead Time (days)")
+            st.plotly_chart(fig, use_container_width=True)
+        with c2:
+            bottom10 = route_agg.tail(10)
+            fig = px.bar(bottom10, x='Avg_Lead_Time', y=route_col, orientation='h',
+                         title="Bottom 10 Least Efficient Routes", color_discrete_sequence=['#C0392B'])
+            fig.update_layout(yaxis={'categoryorder': 'total ascending'}, xaxis_title="Avg Lead Time (days)")
+            st.plotly_chart(fig, use_container_width=True)
 
-    # Scatter — volume vs efficiency
-    st.markdown("<div class='section-header'>Volume vs. Efficiency Bubble Chart</div>", unsafe_allow_html=True)
-    fig_scatter = px.scatter(
-        route_stats, x='Shipments', y='Avg_Lead',
-        size='Total_Sales', color='Efficiency Score',
-        hover_name='Route', text='Route',
-        color_continuous_scale='RdYlGn',
-        title='Route Volume vs. Lead Time (bubble size = total sales)',
-        labels={'Avg_Lead': 'Avg Lead Time (days)', 'Shipments': 'Number of Shipments'}
-    )
-    fig_scatter.update_traces(textposition='top center', textfont_size=9)
-    fig_scatter.update_layout(**{**LAYOUT_BASE,
-        'height': 440, 'margin': dict(t=50, b=40, l=40, r=40),
-        'coloraxis_colorbar': dict(title='Efficiency', tickfont=dict(color='#222222'))
-    })
-    fig_scatter.update_xaxes(**AXIS_STYLE)
-    fig_scatter.update_yaxes(**AXIS_STYLE)
-    st.plotly_chart(fig_scatter, use_container_width=True)
+        st.subheader("Route Performance Leaderboard")
+        display_df = route_agg.sort_values('Efficiency Score', ascending=False).rename(columns={
+            route_col: 'Route', 'Total_Shipments': 'Shipments', 'Avg_Lead_Time': 'Avg Lead Time (d)',
+            'Std_Lead_Time': 'Std Dev (d)', 'Delay_Rate': 'Delay Rate', 'Total_Sales': 'Total Sales ($)'
+        })
+        display_df['Delay Rate'] = (display_df['Delay Rate'] * 100).round(1)
+        st.dataframe(
+            display_df.style.format({
+                'Avg Lead Time (d)': '{:.1f}', 'Std Dev (d)': '{:.1f}',
+                'Delay Rate': '{:.1f}%', 'Total Sales ($)': '${:,.0f}', 'Efficiency Score': '{:.1f}'
+            }),
+            use_container_width=True, height=400
+        )
 
-    # Route detail table
-    st.markdown("<div class='section-header'>Full Route Stats Table</div>", unsafe_allow_html=True)
-    display = route_stats.rename(columns={
-        'Route': 'Route', 'Avg_Lead': 'Avg Lead (days)',
-        'Shipments': 'Shipments', 'Delay_Rate': 'Delay Rate (%)',
-        'Total_Sales': 'Total Sales ($)', 'Avg_Profit': 'Avg Profit ($)',
-        'Efficiency Score': 'Efficiency Score'
-    })
-    display['Total Sales ($)'] = display['Total Sales ($)'].round(0).astype(int)
-    st.dataframe(display.reset_index(drop=True), use_container_width=True, height=380)
+# ---------------------------------------------------------------------------
+# TAB 2 — Geographic Shipping Map
+# ---------------------------------------------------------------------------
+with tab2:
+    st.subheader("US Shipping Efficiency Heatmap")
 
-# ══════════════════════════════════════════════════════════════════════
-# TAB 3 — SHIP MODE
-# ══════════════════════════════════════════════════════════════════════
+    us_df = df[df['Country/Region'] == 'United States'].copy()
+    state_agg = us_df.groupby(['State/Province', 'State Abbr']).agg(
+        Volume=('Order ID', 'count'),
+        Avg_Lead_Time=('Lead Time', 'mean'),
+        Delay_Rate=('Delayed', 'mean'),
+    ).reset_index()
+
+    if state_agg.empty:
+        st.info("No US shipments match current filters.")
+    else:
+        map_metric = st.radio("Color by", ["Avg Lead Time", "Delay Rate", "Shipment Volume"], horizontal=True)
+        metric_map = {"Avg Lead Time": "Avg_Lead_Time", "Delay Rate": "Delay_Rate", "Shipment Volume": "Volume"}
+        color_col = metric_map[map_metric]
+        color_scale = "RdYlGn_r" if map_metric != "Shipment Volume" else "Blues"
+
+        fig = px.choropleth(
+            state_agg, locations='State Abbr', locationmode="USA-states",
+            color=color_col, scope="usa", color_continuous_scale=color_scale,
+            hover_name='State/Province',
+            hover_data={'Volume': True, 'Avg_Lead_Time': ':.1f', 'Delay_Rate': ':.1%', 'State Abbr': False},
+            title=f"US States Colored by {map_metric}"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("Regional Bottleneck Map: Volume vs. Lead Time")
+        region_agg = df.groupby('Region').agg(
+            Volume=('Order ID', 'count'), Avg_Lead_Time=('Lead Time', 'mean'), Delay_Rate=('Delayed', 'mean')
+        ).reset_index()
+        fig2 = px.scatter(
+            region_agg, x='Volume', y='Avg_Lead_Time', text='Region', size='Volume',
+            color='Delay_Rate', color_continuous_scale='RdYlGn_r',
+            title="Bubble size = volume, color = delay rate"
+        )
+        fig2.update_traces(textposition='top center')
+        st.plotly_chart(fig2, use_container_width=True)
+
+        canada_df = df[df['Country/Region'] == 'Canada']
+        if not canada_df.empty:
+            st.subheader("Canada — Provincial Summary")
+            ca_agg = canada_df.groupby('State/Province').agg(
+                Volume=('Order ID', 'count'), Avg_Lead_Time=('Lead Time', 'mean'), Delay_Rate=('Delayed', 'mean')
+            ).reset_index().sort_values('Volume', ascending=False)
+            ca_agg['Delay_Rate'] = (ca_agg['Delay_Rate'] * 100).round(1)
+            st.dataframe(ca_agg.rename(columns={'Delay_Rate': 'Delay Rate (%)', 'Avg_Lead_Time': 'Avg Lead Time (d)'}),
+                         use_container_width=True)
+
+# ---------------------------------------------------------------------------
+# TAB 3 — Ship Mode Comparison
+# ---------------------------------------------------------------------------
 with tab3:
-    st.markdown("<div class='section-header'>Ship Mode Performance Comparison</div>", unsafe_allow_html=True)
-
-    ship_stats = df.groupby('Ship Mode').agg(
-        Avg_Lead=('Lead Time','mean'),
-        Orders=('Row ID','count'),
-        Delay_Rate=('Delay Flag','mean'),
-        Avg_Sales=('Sales','mean'),
-        Avg_Cost=('Cost','mean'),
-        Avg_Profit=('Gross Profit','mean')
-    ).reset_index().sort_values('Avg_Lead')
-    ship_stats['Delay_Rate'] = (ship_stats['Delay_Rate']*100).round(1)
+    st.subheader("Lead Time Comparison by Ship Mode")
 
     c1, c2 = st.columns(2)
     with c1:
-        fig_sm = go.Figure(go.Bar(
-            x=ship_stats['Ship Mode'], y=ship_stats['Avg_Lead'],
-            marker_color=['#1E8449','#2E75B6','#E07B39','#C0392B'],
-            text=ship_stats['Avg_Lead'].round(0).astype(int).astype(str) + 'd',
-            textposition='outside'
-        ))
-        fig_sm.update_layout(**{**LAYOUT_BASE,
-            'title': 'Avg Lead Time by Ship Mode',
-            'yaxis_title': 'Days', 'height': 360, 'margin': dict(t=50,b=40,l=40,r=20)
-        })
-        fig_sm.update_xaxes(tickfont=dict(color='#222222'))
-        fig_sm.update_yaxes(range=[ship_stats['Avg_Lead'].min()-20, ship_stats['Avg_Lead'].max()+40], **AXIS_STYLE)
-        st.plotly_chart(fig_sm, use_container_width=True)
-
+        fig = px.box(df, x='Ship Mode', y='Lead Time', color='Ship Mode',
+                     title="Lead Time Distribution by Ship Mode")
+        st.plotly_chart(fig, use_container_width=True)
     with c2:
-        fig_vol = go.Figure(go.Bar(
-            x=ship_stats['Ship Mode'], y=ship_stats['Orders'],
-            marker_color=PALETTE[:4],
-            text=ship_stats['Orders'].apply(lambda x: f'{x:,}'),
-            textposition='outside'
-        ))
-        fig_vol.update_layout(**{**LAYOUT_BASE,
-            'title': 'Order Volume by Ship Mode',
-            'yaxis_title': 'Orders', 'height': 360, 'margin': dict(t=50,b=40,l=40,r=20)
-        })
-        fig_vol.update_xaxes(tickfont=dict(color='#222222'))
-        fig_vol.update_yaxes(**AXIS_STYLE)
-        st.plotly_chart(fig_vol, use_container_width=True)
+        mode_agg = df.groupby('Ship Mode').agg(
+            Orders=('Order ID', 'count'), Avg_Lead_Time=('Lead Time', 'mean'), Delay_Rate=('Delayed', 'mean')
+        ).reset_index().sort_values('Avg_Lead_Time')
+        fig = px.bar(mode_agg, x='Ship Mode', y='Delay_Rate', color='Ship Mode',
+                     title="Delay Rate by Ship Mode")
+        fig.update_yaxes(tickformat=".0%")
+        st.plotly_chart(fig, use_container_width=True)
 
-    # Lead time distribution per ship mode
-    st.markdown("<div class='section-header'>Lead Time Distribution per Ship Mode</div>", unsafe_allow_html=True)
-    fig_violin = go.Figure()
-    dark_palette = ['#1a5276','#1e8449','#b9770e','#7b241c']
-    for i, mode in enumerate(sorted(df['Ship Mode'].unique())):
-        sub = df[df['Ship Mode'] == mode]['Lead Time']
-        fig_violin.add_trace(go.Violin(
-            y=sub, name=mode, box_visible=True, meanline_visible=True,
-            fillcolor=PALETTE[i], line_color=dark_palette[i % len(dark_palette)],
-            opacity=0.85
-        ))
-    fig_violin.update_layout(**{**LAYOUT_BASE,
-        'title': 'Lead Time Spread by Ship Mode',
-        'yaxis_title': 'Lead Time (Days)',
-        'height': 400, 'margin': dict(t=50,b=40,l=40,r=20), 'showlegend': True
-    })
-    fig_violin.update_xaxes(tickfont=dict(color='#222222', size=11))
-    fig_violin.update_yaxes(**AXIS_STYLE)
-    st.plotly_chart(fig_violin, use_container_width=True)
+    st.subheader("Cost–Time Tradeoff")
+    mode_financials = df.groupby('Ship Mode').agg(
+        Orders=('Order ID', 'count'), Avg_Sales=('Sales', 'mean'), Avg_Cost=('Cost', 'mean'),
+        Avg_Gross_Profit=('Gross Profit', 'mean'), Avg_Lead_Time=('Lead Time', 'mean'),
+        Delay_Rate=('Delayed', 'mean'),
+    ).reset_index()
 
-    # Cost-time table
-    st.markdown("<div class='section-header'>Cost vs. Speed Summary</div>", unsafe_allow_html=True)
-    display_sm = ship_stats[['Ship Mode','Avg_Lead','Orders','Delay_Rate','Avg_Cost','Avg_Sales']].copy()
-    display_sm.columns = ['Ship Mode','Avg Lead (days)','Orders','Delay Rate (%)','Avg Cost ($)','Avg Sales ($)']
-    display_sm['Avg Lead (days)'] = display_sm['Avg Lead (days)'].round(0).astype(int)
-    display_sm['Avg Cost ($)'] = display_sm['Avg Cost ($)'].round(2)
-    display_sm['Avg Sales ($)'] = display_sm['Avg Sales ($)'].round(2)
-    st.dataframe(display_sm.reset_index(drop=True), use_container_width=True)
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=mode_financials['Ship Mode'], y=mode_financials['Avg_Cost'],
+                          name='Avg Cost ($)', marker_color='#E67E22'))
+    fig.add_trace(go.Scatter(x=mode_financials['Ship Mode'], y=mode_financials['Avg_Lead_Time'],
+                              name='Avg Lead Time (days)', yaxis='y2', mode='lines+markers',
+                              line=dict(color='#2980B9', width=3)))
+    fig.update_layout(
+        title="Average Cost vs. Average Lead Time by Ship Mode",
+        yaxis=dict(title='Avg Cost ($)'),
+        yaxis2=dict(title='Avg Lead Time (days)', overlaying='y', side='right'),
+        legend=dict(orientation='h', y=1.1)
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-    st.info("💡 **Paradox:** Standard Class (cheapest) has the shortest lead time. First Class costs more but ships slowest. Consider renegotiating premium carrier contracts.")
+    mode_financials['Delay_Rate'] = (mode_financials['Delay_Rate'] * 100).round(1)
+    st.dataframe(
+        mode_financials.rename(columns={
+            'Avg_Sales': 'Avg Sales ($)', 'Avg_Cost': 'Avg Cost ($)', 'Avg_Gross_Profit': 'Avg Gross Profit ($)',
+            'Avg_Lead_Time': 'Avg Lead Time (d)', 'Delay_Rate': 'Delay Rate (%)'
+        }).round(2),
+        use_container_width=True
+    )
 
-# ══════════════════════════════════════════════════════════════════════
-# TAB 4 — GEOGRAPHIC
-# ══════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+# TAB 4 — Route Drill-Down
+# ---------------------------------------------------------------------------
 with tab4:
-    st.markdown("<div class='section-header'>Regional Shipping Performance</div>", unsafe_allow_html=True)
+    st.subheader("Route Drill-Down")
 
-    region_stats = df.groupby('Region').agg(
-        Avg_Lead=('Lead Time','mean'),
-        Orders=('Row ID','count'),
-        Delay_Rate=('Delay Flag','mean'),
-        Total_Sales=('Sales','sum'),
-        Total_Profit=('Gross Profit','sum')
-    ).reset_index().sort_values('Avg_Lead')
-    region_stats['Delay_Rate'] = (region_stats['Delay_Rate']*100).round(1)
+    drill_factory = st.selectbox("Factory", sorted(df['Factory'].unique()))
+    states_for_factory = sorted(df[df['Factory'] == drill_factory]['State/Province'].unique())
+    drill_state = st.selectbox("State / Province", states_for_factory)
 
-    fig_reg = make_subplots(
-        rows=1, cols=2, shared_yaxes=True,
-        subplot_titles=('Avg Lead Time (days)', 'Total Sales ($)')
-    )
-    fig_reg.add_trace(go.Bar(
-        y=region_stats['Region'], x=region_stats['Avg_Lead'],
-        orientation='h', marker_color=PALETTE[:4],
-        text=region_stats['Avg_Lead'].round(0).astype(int).astype(str) + 'd',
-        textposition='outside', name='Lead Time'
-    ), row=1, col=1)
-    fig_reg.add_trace(go.Bar(
-        y=region_stats['Region'], x=region_stats['Total_Sales'],
-        orientation='h', marker=dict(color=PALETTE[:4], opacity=0.55),
-        text=region_stats['Total_Sales'].apply(lambda x: f'${x:,.0f}'),
-        textposition='outside', name='Sales'
-    ), row=1, col=2)
-    fig_reg.update_layout(**{**LAYOUT_BASE,
-        'height': 320, 'margin': dict(t=50,b=40,l=80,r=80), 'showlegend': False
-    })
-    fig_reg.update_xaxes(**AXIS_STYLE)
-    fig_reg.update_yaxes(tickfont=dict(color='#222222'))
-    st.plotly_chart(fig_reg, use_container_width=True)
+    route_df = df[(df['Factory'] == drill_factory) & (df['State/Province'] == drill_state)]
 
-    # Factory map
-    st.markdown("<div class='section-header'>Factory Locations</div>", unsafe_allow_html=True)
-    fac_map_data = []
-    for fac, (lat, lon) in FACTORY_COORDS.items():
-        if fac in df['Factory'].values:
-            cnt = df[df['Factory']==fac].shape[0]
-            avg_l = df[df['Factory']==fac]['Lead Time'].mean()
-            fac_map_data.append({'Factory': fac, 'lat': lat, 'lon': lon,
-                                  'Orders': cnt, 'Avg Lead': round(avg_l,0)})
-    fac_df = pd.DataFrame(fac_map_data)
+    if route_df.empty:
+        st.info("No shipments for this route under current filters.")
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Shipments", f"{len(route_df):,}")
+        c2.metric("Avg Lead Time", f"{route_df['Lead Time'].mean():.1f} d")
+        c3.metric("Delay Rate", f"{route_df['Delayed'].mean()*100:.1f}%")
+        c4.metric("Total Sales", f"${route_df['Sales'].sum():,.0f}")
 
-    if not fac_df.empty:
-        fig_map = px.scatter_mapbox(
-            fac_df, lat='lat', lon='lon', size='Orders',
-            color='Avg Lead', hover_name='Factory',
-            hover_data={'Orders': True, 'Avg Lead': True, 'lat': False, 'lon': False},
-            color_continuous_scale='RdYlGn_r',
-            size_max=40,
-            zoom=3, center={'lat': 39.5, 'lon': -98.5},
-            mapbox_style='carto-positron',
-            title='Factory Locations (bubble size = order volume, color = avg lead time)'
+        st.markdown(f"**State-level performance:** {drill_factory} → {drill_state}")
+
+        fig = px.scatter(
+            route_df.sort_values('Order Date'), x='Order Date', y='Lead Time', color='Ship Mode',
+            hover_data=['Order ID', 'Product Name', 'Sales'],
+            title=f"Order-Level Shipment Timeline: {drill_factory} → {drill_state}"
         )
-        fig_map.update_layout(
-            height=480, margin=dict(t=50,b=0,l=0,r=0),
-            paper_bgcolor='white',
-            font=dict(color='#1a1a1a'),
-            coloraxis_colorbar=dict(title='Avg Lead (days)', tickfont=dict(color='#222222'))
-        )
-        st.plotly_chart(fig_map, use_container_width=True)
+        fig.add_hline(y=delay_threshold, line_dash='dash', line_color='red',
+                       annotation_text='Delay threshold')
+        st.plotly_chart(fig, use_container_width=True)
 
-    # State-level table
-    st.markdown("<div class='section-header'>Top States by Order Volume</div>", unsafe_allow_html=True)
-    state_stats = df.groupby('State/Province').agg(
-        Orders=('Row ID','count'),
-        Avg_Lead=('Lead Time','mean'),
-        Total_Sales=('Sales','sum'),
-        Delay_Rate=('Delay Flag','mean')
-    ).reset_index().sort_values('Orders', ascending=False).head(20)
-    state_stats['Avg_Lead'] = state_stats['Avg_Lead'].round(0).astype(int)
-    state_stats['Delay_Rate'] = (state_stats['Delay_Rate']*100).round(1)
-    state_stats['Total_Sales'] = state_stats['Total_Sales'].round(0).astype(int)
-    state_stats.columns = ['State/Province','Orders','Avg Lead (days)','Total Sales ($)','Delay Rate (%)']
-    st.dataframe(state_stats.reset_index(drop=True), use_container_width=True, height=420)
+        st.subheader("Product Mix on this Route")
+        prod_mix = route_df.groupby('Product Name').agg(
+            Units=('Units', 'sum'), Sales=('Sales', 'sum'), Avg_Lead_Time=('Lead Time', 'mean')
+        ).reset_index().sort_values('Sales', ascending=False)
+        st.dataframe(prod_mix.style.format({'Sales': '${:,.0f}', 'Avg_Lead_Time': '{:.1f}'}),
+                     use_container_width=True)
 
-# ══════════════════════════════════════════════════════════════════════
-# TAB 5 — TRENDS
-# ══════════════════════════════════════════════════════════════════════
-with tab5:
-    st.markdown("<div class='section-header'>Monthly Lead Time Trend</div>", unsafe_allow_html=True)
+        with st.expander("Raw order-level records for this route"):
+            st.dataframe(
+                route_df[['Order ID', 'Order Date', 'Ship Date', 'Lead Time', 'Ship Mode',
+                          'Product Name', 'Sales', 'Units', 'Delayed']].sort_values('Order Date'),
+                use_container_width=True
+            )
 
-    monthly = df.groupby('Month').agg(
-        Avg_Lead=('Lead Time','mean'),
-        Orders=('Row ID','count'),
-        Total_Sales=('Sales','sum')
-    ).reset_index().sort_values('Month')
-
-    fig_trend = make_subplots(specs=[[{"secondary_y": True}]])
-    fig_trend.add_trace(go.Scatter(
-        x=monthly['Month'], y=monthly['Avg_Lead'].round(0),
-        name='Avg Lead Time', mode='lines+markers',
-        line=dict(color='#2E75B6', width=2.5),
-        marker=dict(size=5),
-        fill='tozeroy', fillcolor='rgba(46,117,182,0.08)'
-    ), secondary_y=False)
-    fig_trend.add_trace(go.Bar(
-        x=monthly['Month'], y=monthly['Orders'],
-        name='Order Volume', opacity=0.3,
-        marker_color='#E07B39'
-    ), secondary_y=True)
-
-    # Highlight 2025 jump
-    fig_trend.add_vrect(
-        x0='2025-01', x1=monthly['Month'].max(),
-        fillcolor='rgba(192,57,43,0.05)', line_width=0,
-        annotation_text='2025 performance drop',
-        annotation_position='top left',
-        annotation_font_color='#C0392B'
-    )
-    fig_trend.update_xaxes(tickangle=45, tickfont=dict(color='#222222'), linecolor='#CCCCCC')
-    fig_trend.update_yaxes(title_text='Avg Lead Time (days)', secondary_y=False,
-                            showgrid=True, gridcolor='#E8E8E8',
-                            tickfont=dict(color='#222222'), title_font=dict(color='#2E75B6'))
-    fig_trend.update_yaxes(title_text='Order Volume', secondary_y=True, showgrid=False,
-                            tickfont=dict(color='#222222'), title_font=dict(color='#E07B39'))
-    fig_trend.update_layout(**{**LAYOUT_BASE,
-        'title': 'Monthly Shipping Lead Time & Order Volume',
-        'height': 420, 'margin': dict(t=50,b=60,l=60,r=60),
-        'legend': dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1,
-                       font=dict(color='#1a1a1a'))
-    })
-    st.plotly_chart(fig_trend, use_container_width=True)
-
-    # Quarterly breakdown
-    st.markdown("<div class='section-header'>Quarterly Performance by Region</div>", unsafe_allow_html=True)
-    qtr = df.groupby(['Quarter','Region'])['Lead Time'].mean().reset_index()
-    qtr['Lead Time'] = qtr['Lead Time'].round(0)
-    fig_qtr = px.line(
-        qtr, x='Quarter', y='Lead Time', color='Region',
-        markers=True, color_discrete_sequence=PALETTE,
-        title='Quarterly Avg Lead Time by Region',
-        labels={'Lead Time': 'Avg Lead Time (days)'}
-    )
-    fig_qtr.update_layout(**{**LAYOUT_BASE,
-        'height': 380, 'margin': dict(t=50,b=60,l=60,r=20)
-    })
-    fig_qtr.update_xaxes(tickangle=45, tickfont=dict(color='#222222'))
-    fig_qtr.update_yaxes(**AXIS_STYLE)
-    st.plotly_chart(fig_qtr, use_container_width=True)
-
-    # YoY comparison
-    st.markdown("<div class='section-header'>Year-over-Year Lead Time Comparison</div>", unsafe_allow_html=True)
-    yoy = df.groupby(['Year','Ship Mode'])['Lead Time'].mean().reset_index()
-    yoy['Lead Time'] = yoy['Lead Time'].round(0)
-    fig_yoy = px.bar(
-        yoy, x='Ship Mode', y='Lead Time', color='Year',
-        barmode='group', color_discrete_sequence=['#2E75B6','#E07B39'],
-        title='Avg Lead Time by Ship Mode: 2024 vs 2025',
-        labels={'Lead Time': 'Avg Lead Time (days)'}
-    )
-    fig_yoy.update_layout(**{**LAYOUT_BASE,
-        'height': 360, 'margin': dict(t=50,b=40,l=60,r=20)
-    })
-    fig_yoy.update_xaxes(tickfont=dict(color='#222222'))
-    fig_yoy.update_yaxes(**AXIS_STYLE)
-    st.plotly_chart(fig_yoy, use_container_width=True)
-
-    # Product-level drill
-    st.markdown("<div class='section-header'>Product-Level Lead Time Heatmap</div>", unsafe_allow_html=True)
-    prod_region = df.groupby(['Product Name','Region'])['Lead Time'].mean().reset_index()
-    prod_region['Lead Time'] = prod_region['Lead Time'].round(0)
-    prod_pivot = prod_region.pivot(index='Product Name', columns='Region', values='Lead Time')
-    fig_heat = go.Figure(go.Heatmap(
-        z=prod_pivot.values,
-        x=prod_pivot.columns.tolist(),
-        y=prod_pivot.index.tolist(),
-        colorscale='RdYlGn_r',
-        text=[[str(int(v)) if not np.isnan(v) else '' for v in row] for row in prod_pivot.values],
-        texttemplate='%{text}',
-        colorbar=dict(title='Days')
-    ))
-    fig_heat.update_layout(**{**LAYOUT_BASE,
-        'title': 'Avg Lead Time by Product × Region (days)',
-        'height': 480, 'margin': dict(t=50,b=60,l=20,r=20),
-        'xaxis_title': 'Region', 'yaxis_title': 'Product'
-    })
-    fig_heat.update_xaxes(tickfont=dict(color='#222222'))
-    fig_heat.update_yaxes(tickfont=dict(color='#222222'))
-    st.plotly_chart(fig_heat, use_container_width=True)
+st.markdown("---")
+st.caption("Built for Nassau Candy Distributor — Factory-to-Customer Shipping Route Efficiency Analysis")
